@@ -1,0 +1,19 @@
+/.bundle/
+/.yardoc
+/_yardoc/
+/coverage/
+/doc/
+/pkg/
+/spec/reports/
+/tmp/
+/node_modules/
+*.bundle
+*.so
+*.o
+*.a
+*.lock
+mkmf.log
+main.hpp
+
+# rspec failure tracking
+.rspec_status
