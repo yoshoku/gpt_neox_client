@@ -3,6 +3,56 @@
 VALUE rb_mGPTNeoX;
 VALUE rb_mGPTNeoXClient;
 VALUE rb_cGPTParams;
+VALUE rb_cGPTVocab;
+
+class GPTVocabWrapper {
+public:
+  struct gpt_vocab vocab;
+  GPTVocabWrapper() {}
+  ~GPTVocabWrapper() {}
+};
+
+class RbGPTVocab {
+public:
+  static VALUE gpt_vocab_alloc(VALUE self) {
+    GPTVocabWrapper* ptr = (GPTVocabWrapper*)ruby_xmalloc(sizeof(GPTVocabWrapper));
+    new (ptr) GPTVocabWrapper();
+    return TypedData_Wrap_Struct(self, &gpt_vocab_type, ptr);
+  }
+
+  static void gpt_vocab_free(void* ptr) {
+    ((GPTVocabWrapper*)ptr)->~GPTVocabWrapper();
+    ruby_xfree(ptr);
+  }
+
+  static size_t gpt_vocab_size(const void* ptr) {
+    return sizeof(*((GPTVocabWrapper*)ptr));
+  }
+
+  static GPTVocabWrapper* get_gpt_vocab(VALUE self) {
+    GPTVocabWrapper* ptr = nullptr;
+    TypedData_Get_Struct(self, GPTVocabWrapper, &gpt_vocab_type, ptr);
+    return ptr;
+  }
+
+  static void define_class(VALUE outer) {
+    rb_cGPTVocab = rb_define_class_under(outer, "GPTVocab", rb_cObject);
+    rb_define_alloc_func(rb_cGPTVocab, gpt_vocab_alloc);
+  }
+
+private:
+  static const rb_data_type_t gpt_vocab_type;
+};
+
+const rb_data_type_t RbGPTVocab::gpt_vocab_type = {
+  "RbGPTVocab",
+  { 0,
+    RbGPTVocab::gpt_vocab_free,
+    RbGPTVocab::gpt_vocab_size },
+  0,
+  0,
+  RUBY_TYPED_FREE_IMMEDIATELY
+};
 
 class GPTParamsWrapper {
 public:
@@ -216,4 +266,5 @@ extern "C" void Init_gpt_neox_client(void) {
   rb_mGPTNeoXClient = rb_define_module("GPTNeoXClient");
 
   RbGPTParams::define_class(rb_mGPTNeoX);
+  RbGPTVocab::define_class(rb_mGPTNeoX);
 }
