@@ -1,7 +1,6 @@
 #include "gpt_neox_client.h"
 
-VALUE rb_mGPTNeoX;
-VALUE rb_mGPTNeoXClient;
+VALUE rb_cGPTNeoXClient;
 VALUE rb_cGPTParams;
 VALUE rb_cGPTVocab;
 VALUE rb_cGPTNeoXModel;
@@ -37,7 +36,7 @@ public:
   }
 
   static void define_class(VALUE outer) {
-    rb_cGPTNeoXModel = rb_define_class_under(outer, "GPTNeoXModel", rb_cObject);
+    rb_cGPTNeoXModel = rb_define_class_under(outer, "Model", rb_cObject);
     rb_define_alloc_func(rb_cGPTNeoXModel, gpt_neox_model_alloc);
   }
 
@@ -86,7 +85,7 @@ public:
   }
 
   static void define_class(VALUE outer) {
-    rb_cGPTVocab = rb_define_class_under(outer, "GPTVocab", rb_cObject);
+    rb_cGPTVocab = rb_define_class_under(outer, "Vocab", rb_cObject);
     rb_define_alloc_func(rb_cGPTVocab, gpt_vocab_alloc);
   }
 
@@ -135,7 +134,7 @@ public:
   }
 
   static void define_class(VALUE outer) {
-    rb_cGPTParams = rb_define_class_under(outer, "GPTParams", rb_cObject);
+    rb_cGPTParams = rb_define_class_under(outer, "Params", rb_cObject);
     rb_define_alloc_func(rb_cGPTParams, gpt_params_alloc);
     rb_define_method(rb_cGPTParams, "seed=", RUBY_METHOD_FUNC(_gpt_params_set_seed), 1);
     rb_define_method(rb_cGPTParams, "seed", RUBY_METHOD_FUNC(_gpt_params_get_seed), 0);
@@ -312,10 +311,9 @@ const rb_data_type_t RbGPTParams::gpt_params_type = {
 };
 
 extern "C" void Init_gpt_neox_client(void) {
-  rb_mGPTNeoX = rb_define_module("GPTNeoX");
-  rb_mGPTNeoXClient = rb_define_module("GPTNeoXClient");
+  rb_cGPTNeoXClient = rb_define_class("GPTNeoXClient", rb_cObject);
 
-  RbGPTParams::define_class(rb_mGPTNeoX);
-  RbGPTVocab::define_class(rb_mGPTNeoX);
-  RbGPTNeoXModel::define_class(rb_mGPTNeoX);
+  RbGPTParams::define_class(rb_cGPTNeoXClient);
+  RbGPTVocab::define_class(rb_cGPTNeoXClient);
+  RbGPTNeoXModel::define_class(rb_cGPTNeoXClient);
 }
