@@ -4,6 +4,56 @@ VALUE rb_mGPTNeoX;
 VALUE rb_mGPTNeoXClient;
 VALUE rb_cGPTParams;
 VALUE rb_cGPTVocab;
+VALUE rb_cGPTNeoXModel;
+
+class GPTNeoXModelWrapper {
+public:
+  struct gpt_neox_model model;
+  GPTNeoXModelWrapper() {}
+  ~GPTNeoXModelWrapper() {}
+};
+
+class RbGPTNeoXModel {
+public:
+  static VALUE gpt_neox_model_alloc(VALUE self) {
+    GPTNeoXModelWrapper* ptr = (GPTNeoXModelWrapper*)ruby_xmalloc(sizeof(GPTNeoXModelWrapper));
+    new (ptr) GPTNeoXModelWrapper();
+    return TypedData_Wrap_Struct(self, &gpt_neox_model_type, ptr);
+  }
+
+  static void gpt_neox_model_free(void* ptr) {
+    ((GPTNeoXModelWrapper*)ptr)->~GPTNeoXModelWrapper();
+    ruby_xfree(ptr);
+  }
+
+  static size_t gpt_neox_model_size(const void* ptr) {
+    return sizeof(*((GPTNeoXModelWrapper*)ptr));
+  }
+
+  static GPTNeoXModelWrapper* get_gpt_neox_model(VALUE self) {
+    GPTNeoXModelWrapper* ptr = nullptr;
+    TypedData_Get_Struct(self, GPTNeoXModelWrapper, &gpt_neox_model_type, ptr);
+    return ptr;
+  }
+
+  static void define_class(VALUE outer) {
+    rb_cGPTNeoXModel = rb_define_class_under(outer, "GPTNeoXModel", rb_cObject);
+    rb_define_alloc_func(rb_cGPTNeoXModel, gpt_neox_model_alloc);
+  }
+
+private:
+  static const rb_data_type_t gpt_neox_model_type;
+};
+
+const rb_data_type_t RbGPTNeoXModel::gpt_neox_model_type = {
+  "RbGPTNeoXModel",
+  { 0,
+    RbGPTNeoXModel::gpt_neox_model_free,
+    RbGPTNeoXModel::gpt_neox_model_size },
+  0,
+  0,
+  RUBY_TYPED_FREE_IMMEDIATELY
+};
 
 class GPTVocabWrapper {
 public:
@@ -267,4 +317,5 @@ extern "C" void Init_gpt_neox_client(void) {
 
   RbGPTParams::define_class(rb_mGPTNeoX);
   RbGPTVocab::define_class(rb_mGPTNeoX);
+  RbGPTNeoXModel::define_class(rb_mGPTNeoX);
 }
