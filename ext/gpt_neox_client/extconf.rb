@@ -14,7 +14,7 @@ File.open("#{__dir__}/src/main.hpp", 'w') do |fout|
   end
 end
 
-$srcs = %w[ggml.c ggml-alloc.c common-ggml.cpp gpt_neox_client.cpp]
+$srcs = %w[ggml.c ggml-alloc.c common-ggml.cpp common.cpp gpt_neox_client.cpp]
 $CFLAGS << ' -w -DNDEBUG'
 $CXXFLAGS << ' -std=c++11 -DNDEBUG'
 $INCFLAGS << ' -I$(srcdir)/src'
