@@ -289,8 +289,91 @@ const rb_data_type_t RbGPTParams::gpt_params_type = {
   RUBY_TYPED_FREE_IMMEDIATELY
 };
 
+static VALUE gpt_neox_client_initialize(int argc, VALUE* argv, VALUE self) {
+  VALUE kw_args = Qnil;
+  ID kw_table[2] = { rb_intern("model"), rb_intern("seed") };
+  VALUE kw_values[2] = { Qundef, Qundef };
+  rb_scan_args(argc, argv, ":", &kw_args);
+  rb_get_kwargs(kw_args, kw_table, 1, 1, kw_values);
+
+  if (!RB_TYPE_P(kw_values[0], T_STRING)) {
+    rb_raise(rb_eTypeError, "expected space, String");
+    return Qnil;
+  }
+
+  rb_iv_set(self, "@params", rb_funcall(rb_const_get(rb_cGPTNeoXClient, rb_intern("Params")), rb_intern("new"), 0));
+  rb_iv_set(self, "@vocab", rb_funcall(rb_const_get(rb_cGPTNeoXClient, rb_intern("Vocab")), rb_intern("new"), 0));
+  rb_iv_set(self, "@model", rb_funcall(rb_const_get(rb_cGPTNeoXClient, rb_intern("Model")), rb_intern("new"), 0));
+
+  rb_funcall(rb_iv_get(self, "@params"), rb_intern("model="), 1, kw_values[0]);
+  gpt_params* params = RbGPTParams::get_gpt_params(rb_iv_get(self, "@params"));
+  gpt_neox_model* model = RbGPTNeoXModel::get_gpt_neox_model(rb_iv_get(self, "@model"));
+  gpt_vocab* vocab = RbGPTVocab::get_gpt_vocab(rb_iv_get(self, "@vocab"));
+
+  if (!gpt_neox_model_load(params->model, *model, *vocab)) {
+    rb_raise(rb_eRuntimeError, "failed to load model: %s", params->model.c_str());
+    return Qnil;
+  }
+
+  return self;
+}
+
+static VALUE gpt_neox_client_completions(VALUE self, VALUE prompt) {
+  std::string prompt_str(StringValueCStr(prompt));
+  gpt_params* params = RbGPTParams::get_gpt_params(rb_iv_get(self, "@params"));
+  gpt_neox_model* model = RbGPTNeoXModel::get_gpt_neox_model(rb_iv_get(self, "@model"));
+  gpt_vocab* vocab = RbGPTVocab::get_gpt_vocab(rb_iv_get(self, "@vocab"));
+  params->prompt = prompt_str;
+
+  std::vector<gpt_vocab::id> embd_inp = gpt_tokenize(*vocab, params->prompt);
+  params->n_predict = std::min(params->n_predict, model->hparams.n_ctx - static_cast<int>(embd_inp.size()));
+
+  std::vector<float> logits;
+  size_t mem_per_token = 0;
+  gpt_neox_eval(*model, params->n_threads, 0, { 0, 1, 2, 3 }, logits, mem_per_token);
+
+  int n_past = 0;
+  std::string completions = "";
+  std::mt19937 rng(params->seed);
+  std::vector<gpt_vocab::id> embd;
+  for (size_t i = 0; i < embd_inp.size() + params->n_predict; i++) {
+    if (embd.size() > 0) {
+      if (!gpt_neox_eval(*model, params->n_threads, n_past, embd, logits, mem_per_token)) {
+        rb_raise(rb_eRuntimeError, "failed to predict.");
+        return Qnil;
+      }
+    }
+
+    n_past += embd.size();
+    embd.clear();
+
+    if (i >= embd_inp.size()) {
+      gpt_vocab::id id = gpt_sample_top_k_top_p(
+        *vocab,
+        logits.data() + (logits.size() - model->hparams.n_vocab),
+        params->top_k, params->top_p, params->temp,
+        rng);
+      embd.push_back(id);
+    } else {
+      for (size_t k = i; k < embd_inp.size(); k++) {
+        embd.push_back(embd_inp[k]);
+        if (int32_t(embd.size()) > params->n_batch) break;
+      }
+      i += embd.size() - 1;
+    }
+
+    for (auto id : embd) completions += vocab->id_to_token[id];
+    if (embd.back() == 0) break;
+  }
+
+  RB_GC_GUARD(prompt);
+  return rb_utf8_str_new_cstr(completions.c_str());
+}
+
 extern "C" void Init_gpt_neox_client(void) {
   rb_cGPTNeoXClient = rb_define_class("GPTNeoXClient", rb_cObject);
+  rb_define_method(rb_cGPTNeoXClient, "initialize", RUBY_METHOD_FUNC(gpt_neox_client_initialize), -1);
+  rb_define_method(rb_cGPTNeoXClient, "completions", RUBY_METHOD_FUNC(gpt_neox_client_completions), 1);
 
   RbGPTParams::define_class(rb_cGPTNeoXClient);
   RbGPTVocab::define_class(rb_cGPTNeoXClient);
