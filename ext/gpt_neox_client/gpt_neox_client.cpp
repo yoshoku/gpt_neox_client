@@ -145,10 +145,11 @@ static VALUE gpt_neox_client_completions(int argc, VALUE* argv, VALUE self) {
   VALUE kw_args = Qnil;
   rb_scan_args(argc, argv, "1:", &prompt_, &kw_args);
 
-  ID kw_table[5] = { rb_intern("top_k"), rb_intern("top_p"), rb_intern("temperature"),
-                     rb_intern("n_predict"), rb_intern("n_batch") };
-  VALUE kw_values[5] = { Qundef, Qundef, Qundef, Qundef, Qundef };
-  rb_get_kwargs(kw_args, kw_table, 0, 6, kw_values);
+  ID kw_table[7] = { rb_intern("top_k"), rb_intern("top_p"), rb_intern("temperature"),
+                     rb_intern("n_predict"), rb_intern("n_batch"),
+                     rb_intern("repeat_last_n"), rb_intern("repeat_penalty") };
+  VALUE kw_values[7] = { Qundef, Qundef, Qundef, Qundef, Qundef, Qundef, Qundef };
+  rb_get_kwargs(kw_args, kw_table, 0, 7, kw_values);
 
   if (kw_values[0] != Qundef && !RB_INTEGER_TYPE_P(kw_values[0])) {
     rb_raise(rb_eArgError, "top_k must be an integer");
@@ -170,6 +171,14 @@ static VALUE gpt_neox_client_completions(int argc, VALUE* argv, VALUE self) {
     rb_raise(rb_eArgError, "n_batch must be an integer");
     return Qnil;
   }
+  if (kw_values[5] != Qundef && !RB_INTEGER_TYPE_P(kw_values[5])) {
+    rb_raise(rb_eArgError, "repeat_last_n must be an integer");
+    return Qnil;
+  }
+  if (kw_values[6] != Qundef && !RB_FLOAT_TYPE_P(kw_values[6])) {
+    rb_raise(rb_eArgError, "repeat_penalty must be a float");
+    return Qnil;
+  }
 
   std::string prompt(StringValueCStr(prompt_));
   const int top_k = kw_values[0] != Qundef ? NUM2INT(kw_values[0]) : 40;
@@ -177,6 +186,8 @@ static VALUE gpt_neox_client_completions(int argc, VALUE* argv, VALUE self) {
   const double temp = kw_values[2] != Qundef ? NUM2DBL(kw_values[2]) : 0.9;
   const int n_predict_ = kw_values[3] != Qundef ? NUM2INT(kw_values[3]) : 200;
   const int n_batch = kw_values[4] != Qundef ? NUM2INT(kw_values[4]) : 8;
+  const int repeat_last_n = kw_values[5] != Qundef ? NUM2INT(kw_values[5]) : 64;
+  const float repeat_penalty = kw_values[6] != Qundef ? NUM2DBL(kw_values[6]) : 1.0f;
 
   gpt_neox_model* model = RbGPTNeoXModel::get_gpt_neox_model(rb_iv_get(self, "@model"));
   gpt_vocab* vocab = RbGPTVocab::get_gpt_vocab(rb_iv_get(self, "@vocab"));
@@ -190,34 +201,42 @@ static VALUE gpt_neox_client_completions(int argc, VALUE* argv, VALUE self) {
   gpt_neox_eval(*model, n_threads, 0, { 0, 1, 2, 3 }, logits, mem_per_token);
 
   int n_past = 0;
+  int n_consumed = 0;
+  int n_sampled = 0;
   std::string completions = "";
   const unsigned int seed = NUM2UINT(rb_iv_get(self, "@seed"));
   std::mt19937 rng(seed);
   std::vector<gpt_vocab::id> embd;
-  for (size_t i = 0; i < embd_inp.size() + n_predict; i++) {
+  std::vector<int32_t> last_n_tokens(model->hparams.n_ctx, 0);
+
+  while (n_sampled < n_predict) {
     if (embd.size() > 0) {
       if (!gpt_neox_eval(*model, n_threads, n_past, embd, logits, mem_per_token)) {
         rb_raise(rb_eRuntimeError, "failed to predict.");
         return Qnil;
       }
+      n_past += embd.size();
+      embd.clear();
     }
 
-    n_past += embd.size();
-    embd.clear();
-
-    if (i >= embd_inp.size()) {
-      gpt_vocab::id id = gpt_sample_top_k_top_p(
+    if (embd_inp.size() <= n_consumed) {
+      gpt_vocab::id id = gpt_sample_top_k_top_p_repeat(
         *vocab,
         logits.data() + (logits.size() - model->hparams.n_vocab),
+        last_n_tokens.data(), last_n_tokens.size(),
         top_k, top_p, temp,
+        repeat_last_n, repeat_penalty,
         rng);
+      last_n_tokens.erase(last_n_tokens.begin());
+      last_n_tokens.push_back(id);
       embd.push_back(id);
+      n_sampled += 1;
     } else {
-      for (size_t k = i; k < embd_inp.size(); k++) {
-        embd.push_back(embd_inp[k]);
-        if (int32_t(embd.size()) > n_batch) break;
+      while (embd_inp.size() > n_consumed) {
+        embd.push_back(embd_inp[n_consumed]);
+        n_consumed += 1;
+        if (embd.size() >= n_batch) break;
       }
-      i += embd.size() - 1;
     }
 
     for (auto id : embd) completions += vocab->id_to_token[id];
