@@ -8,8 +8,8 @@ Gem::Specification.new do |spec|
   spec.authors = ['yoshoku']
   spec.email = ['yoshoku@outlook.com']
 
-  spec.summary = 'Write a short summary, because RubyGems requires one.'
-  spec.description = 'Write a longer description or delete this line.'
+  spec.summary = 'gpt_neox_client is a simple client for GPT-NeoX.'
+  spec.description = 'gpt_neox_client is a simple client for GPT-NeoX.'
   spec.homepage = 'https://github.com/yoshoku/gpt_neox_client'
   spec.license = 'MIT'
 
