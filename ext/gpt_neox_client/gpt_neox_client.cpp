@@ -248,13 +248,69 @@ static VALUE gpt_neox_client_completions(int argc, VALUE* argv, VALUE self) {
 }
 
 extern "C" void Init_gpt_neox_client(void) {
+  /**
+   * Document-class: GPTNeoXClient
+   * GPTNeoXClient is a Ruby client for GPT-NeoX.
+   */
   rb_cGPTNeoXClient = rb_define_class("GPTNeoXClient", rb_cObject);
+  /**
+   * Creates a new GPTNeoXClient.
+   *
+   * @example
+   *   require "gpt_neox_client"
+   *
+   *   client = GPTNeoXClient.new("gpt-neox-f16.bin")
+   *
+   * @overload initialize(path, seed: nil, n_threads: 1)
+   *   @param [String] path The path to the model.
+   *   @param [Integer] seed The seed for random number generation.
+   *   @param [Integer] n_threads The number of threads.
+   * @return [GPTNeoXClient]
+   */
   rb_define_method(rb_cGPTNeoXClient, "initialize", RUBY_METHOD_FUNC(gpt_neox_client_initialize), -1);
+  /**
+   * Generates completions.
+   *
+   * @example
+   *   require "gpt_neox_client"
+   *
+   *   client = GPTNeoXClient.new("gpt-neox-f16.bin")
+   *   client.completions("Hello, my name is")
+   *
+   * @overload completions(prompt, top_k: 40, top_p: 0.9, temperature: 0.9, n_predict: 200, n_batch: 8, repeat_last_n: 64, repeat_penalty: 1.0)
+   *   @param [String] prompt The prompt.
+   *   @param [Integer] top_k The number of top tokens to consider for sampling.
+   *   @param [Float] top_p The cumulative probability of top tokens to consider for sampling.
+   *   @param [Float] temperature The temperature of the softmax distribution.
+   *   @param [Integer] n_predict The number of tokens to predict.
+   *   @param [Integer] n_batch The number of tokens to predict at once.
+   *   @param [Integer] repeat_last_n The number of tokens to consider for repeat penalty.
+   *   @param [Float] repeat_penalty The repeat penalty.
+   * @return [String]
+   */
   rb_define_method(rb_cGPTNeoXClient, "completions", RUBY_METHOD_FUNC(gpt_neox_client_completions), -1);
+  /**
+   * Returns the path to the model.
+   * @return [String]
+   */
   rb_define_attr(rb_cGPTNeoXClient, "path", 1, 0);
+  /**
+   * Returns the seed for random number generation.
+   * @return [Integer]
+   */
   rb_define_attr(rb_cGPTNeoXClient, "seed", 1, 0);
+  /**
+   * Returns the number of threads.
+   * @return [Integer]
+   */
   rb_define_attr(rb_cGPTNeoXClient, "n_threads", 1, 0);
 
+  /**
+   * @!visibility private
+   */
   RbGPTVocab::define_class(rb_cGPTNeoXClient);
+  /**
+   * @!visibility private
+   */
   RbGPTNeoXModel::define_class(rb_cGPTNeoXClient);
 }
