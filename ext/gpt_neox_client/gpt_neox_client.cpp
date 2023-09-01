@@ -332,28 +332,68 @@ static VALUE gpt_neox_client_initialize(int argc, VALUE* argv, VALUE self) {
   return self;
 }
 
-static VALUE gpt_neox_client_completions(VALUE self, VALUE prompt) {
-  std::string prompt_str(StringValueCStr(prompt));
+static VALUE gpt_neox_client_completions(int argc, VALUE* argv, VALUE self) {
+  VALUE prompt_ = Qnil;
+  VALUE kw_args = Qnil;
+  rb_scan_args(argc, argv, "1:", &prompt_, &kw_args);
+
+  ID kw_table[6] = { rb_intern("top_k"), rb_intern("top_p"), rb_intern("temperature"),
+                     rb_intern("n_predict"), rb_intern("n_threads"), rb_intern("n_batch") };
+  VALUE kw_values[6] = { Qundef, Qundef, Qundef, Qundef, Qundef, Qundef };
+  rb_get_kwargs(kw_args, kw_table, 0, 6, kw_values);
+
+  if (kw_values[0] != Qundef && !RB_INTEGER_TYPE_P(kw_values[0])) {
+    rb_raise(rb_eArgError, "top_k must be an integer");
+    return Qnil;
+  }
+  if (kw_values[1] != Qundef && !RB_FLOAT_TYPE_P(kw_values[1])) {
+    rb_raise(rb_eArgError, "top_p must be a float");
+    return Qnil;
+  }
+  if (kw_values[2] != Qundef && !RB_FLOAT_TYPE_P(kw_values[2])) {
+    rb_raise(rb_eArgError, "temp must be a float");
+    return Qnil;
+  }
+  if (kw_values[3] != Qundef && !RB_INTEGER_TYPE_P(kw_values[3])) {
+    rb_raise(rb_eArgError, "n_predict must be an integer");
+    return Qnil;
+  }
+  if (kw_values[4] != Qundef && !RB_INTEGER_TYPE_P(kw_values[4])) {
+    rb_raise(rb_eArgError, "n_threads must be an integer");
+    return Qnil;
+  }
+  if (kw_values[5] != Qundef && !RB_INTEGER_TYPE_P(kw_values[5])) {
+    rb_raise(rb_eArgError, "n_batch must be an integer");
+    return Qnil;
+  }
+
+  std::string prompt(StringValueCStr(prompt_));
+  const int top_k = kw_values[0] != Qundef ? NUM2INT(kw_values[0]) : 40;
+  const double top_p = kw_values[1] != Qundef ? NUM2DBL(kw_values[1]) : 0.9;
+  const double temp = kw_values[2] != Qundef ? NUM2DBL(kw_values[2]) : 0.9;
+  const int n_predict_ = kw_values[3] != Qundef ? NUM2INT(kw_values[3]) : 200;
+  const int n_threads = kw_values[4] != Qundef ? NUM2INT(kw_values[4]) : 1;
+  const int n_batch = kw_values[5] != Qundef ? NUM2INT(kw_values[5]) : 8;
+
   gpt_params* params = RbGPTParams::get_gpt_params(rb_iv_get(self, "@params"));
   gpt_neox_model* model = RbGPTNeoXModel::get_gpt_neox_model(rb_iv_get(self, "@model"));
   gpt_vocab* vocab = RbGPTVocab::get_gpt_vocab(rb_iv_get(self, "@vocab"));
-  params->prompt = prompt_str;
 
-  std::vector<gpt_vocab::id> embd_inp = gpt_tokenize(*vocab, params->prompt);
-  params->n_predict = std::min(params->n_predict, model->hparams.n_ctx - static_cast<int>(embd_inp.size()));
+  std::vector<gpt_vocab::id> embd_inp = gpt_tokenize(*vocab, prompt);
+  const int n_predict = std::min(n_predict_, model->hparams.n_ctx - static_cast<int>(embd_inp.size()));
 
   std::vector<float> logits;
   size_t mem_per_token = 0;
-  gpt_neox_eval(*model, params->n_threads, 0, { 0, 1, 2, 3 }, logits, mem_per_token);
+  gpt_neox_eval(*model, n_threads, 0, { 0, 1, 2, 3 }, logits, mem_per_token);
 
   int n_past = 0;
   std::string completions = "";
   const unsigned int seed = NUM2UINT(rb_iv_get(self, "@seed"));
   std::mt19937 rng(seed);
   std::vector<gpt_vocab::id> embd;
-  for (size_t i = 0; i < embd_inp.size() + params->n_predict; i++) {
+  for (size_t i = 0; i < embd_inp.size() + n_predict; i++) {
     if (embd.size() > 0) {
-      if (!gpt_neox_eval(*model, params->n_threads, n_past, embd, logits, mem_per_token)) {
+      if (!gpt_neox_eval(*model, n_threads, n_past, embd, logits, mem_per_token)) {
         rb_raise(rb_eRuntimeError, "failed to predict.");
         return Qnil;
       }
@@ -366,13 +406,13 @@ static VALUE gpt_neox_client_completions(VALUE self, VALUE prompt) {
       gpt_vocab::id id = gpt_sample_top_k_top_p(
         *vocab,
         logits.data() + (logits.size() - model->hparams.n_vocab),
-        params->top_k, params->top_p, params->temp,
+        top_k, top_p, temp,
         rng);
       embd.push_back(id);
     } else {
       for (size_t k = i; k < embd_inp.size(); k++) {
         embd.push_back(embd_inp[k]);
-        if (int32_t(embd.size()) > params->n_batch) break;
+        if (int32_t(embd.size()) > n_batch) break;
       }
       i += embd.size() - 1;
     }
@@ -381,14 +421,14 @@ static VALUE gpt_neox_client_completions(VALUE self, VALUE prompt) {
     if (embd.back() == 0) break;
   }
 
-  RB_GC_GUARD(prompt);
+  RB_GC_GUARD(prompt_);
   return rb_utf8_str_new_cstr(completions.c_str());
 }
 
 extern "C" void Init_gpt_neox_client(void) {
   rb_cGPTNeoXClient = rb_define_class("GPTNeoXClient", rb_cObject);
   rb_define_method(rb_cGPTNeoXClient, "initialize", RUBY_METHOD_FUNC(gpt_neox_client_initialize), -1);
-  rb_define_method(rb_cGPTNeoXClient, "completions", RUBY_METHOD_FUNC(gpt_neox_client_completions), 1);
+  rb_define_method(rb_cGPTNeoXClient, "completions", RUBY_METHOD_FUNC(gpt_neox_client_completions), -1);
   rb_define_attr(rb_cGPTNeoXClient, "path", 1, 0);
   rb_define_attr(rb_cGPTNeoXClient, "seed", 1, 0);
 
