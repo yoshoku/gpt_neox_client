@@ -291,10 +291,10 @@ const rb_data_type_t RbGPTParams::gpt_params_type = {
 
 static VALUE gpt_neox_client_initialize(int argc, VALUE* argv, VALUE self) {
   VALUE kw_args = Qnil;
-  ID kw_table[2] = { rb_intern("path"), rb_intern("seed") };
-  VALUE kw_values[2] = { Qundef, Qundef };
+  ID kw_table[3] = { rb_intern("path"), rb_intern("seed"), rb_intern("n_threads") };
+  VALUE kw_values[3] = { Qundef, Qundef, Qundef };
   rb_scan_args(argc, argv, ":", &kw_args);
-  rb_get_kwargs(kw_args, kw_table, 1, 1, kw_values);
+  rb_get_kwargs(kw_args, kw_table, 1, 2, kw_values);
 
   if (!RB_TYPE_P(kw_values[0], T_STRING)) {
     rb_raise(rb_eArgError, "path must be a String");
@@ -305,16 +305,27 @@ static VALUE gpt_neox_client_initialize(int argc, VALUE* argv, VALUE self) {
     return Qnil;
   }
   if (RB_INTEGER_TYPE_P(kw_values[1]) && NUM2INT(kw_values[1]) < 0) {
-    rb_raise(rb_eArgError, "seed must be a positive integer");
+    rb_raise(rb_eArgError, "seed must be an integer greater than or equal to zero");
+    return Qnil;
+  }
+  if (kw_values[2] != Qundef && !RB_NIL_P(kw_values[2]) && !RB_INTEGER_TYPE_P(kw_values[2])) {
+    rb_raise(rb_eArgError, "n_threads must be an integer");
+    return Qnil;
+  }
+  if (RB_INTEGER_TYPE_P(kw_values[2]) && NUM2INT(kw_values[2]) < 1) {
+    rb_raise(rb_eArgError, "n_threads must be a positive integer");
     return Qnil;
   }
 
   std::string path(StringValueCStr(kw_values[0]));
   std::random_device rnd;
   const unsigned int seed = RB_INTEGER_TYPE_P(kw_values[1]) ? NUM2INT(kw_values[1]) : rnd();
+  const unsigned int n_threads_ = RB_INTEGER_TYPE_P(kw_values[2]) ? NUM2INT(kw_values[2]) : 1;
+  const unsigned int n_threads = std::min(n_threads_, std::thread::hardware_concurrency());
 
   rb_iv_set(self, "@path", kw_values[0]);
   rb_iv_set(self, "@seed", UINT2NUM(seed));
+  rb_iv_set(self, "@n_threads", UINT2NUM(n_threads));
 
   rb_iv_set(self, "@params", rb_funcall(rb_const_get(rb_cGPTNeoXClient, rb_intern("Params")), rb_intern("new"), 0));
   rb_iv_set(self, "@vocab", rb_funcall(rb_const_get(rb_cGPTNeoXClient, rb_intern("Vocab")), rb_intern("new"), 0));
@@ -337,9 +348,9 @@ static VALUE gpt_neox_client_completions(int argc, VALUE* argv, VALUE self) {
   VALUE kw_args = Qnil;
   rb_scan_args(argc, argv, "1:", &prompt_, &kw_args);
 
-  ID kw_table[6] = { rb_intern("top_k"), rb_intern("top_p"), rb_intern("temperature"),
-                     rb_intern("n_predict"), rb_intern("n_threads"), rb_intern("n_batch") };
-  VALUE kw_values[6] = { Qundef, Qundef, Qundef, Qundef, Qundef, Qundef };
+  ID kw_table[5] = { rb_intern("top_k"), rb_intern("top_p"), rb_intern("temperature"),
+                     rb_intern("n_predict"), rb_intern("n_batch") };
+  VALUE kw_values[5] = { Qundef, Qundef, Qundef, Qundef, Qundef };
   rb_get_kwargs(kw_args, kw_table, 0, 6, kw_values);
 
   if (kw_values[0] != Qundef && !RB_INTEGER_TYPE_P(kw_values[0])) {
@@ -359,10 +370,6 @@ static VALUE gpt_neox_client_completions(int argc, VALUE* argv, VALUE self) {
     return Qnil;
   }
   if (kw_values[4] != Qundef && !RB_INTEGER_TYPE_P(kw_values[4])) {
-    rb_raise(rb_eArgError, "n_threads must be an integer");
-    return Qnil;
-  }
-  if (kw_values[5] != Qundef && !RB_INTEGER_TYPE_P(kw_values[5])) {
     rb_raise(rb_eArgError, "n_batch must be an integer");
     return Qnil;
   }
@@ -372,8 +379,7 @@ static VALUE gpt_neox_client_completions(int argc, VALUE* argv, VALUE self) {
   const double top_p = kw_values[1] != Qundef ? NUM2DBL(kw_values[1]) : 0.9;
   const double temp = kw_values[2] != Qundef ? NUM2DBL(kw_values[2]) : 0.9;
   const int n_predict_ = kw_values[3] != Qundef ? NUM2INT(kw_values[3]) : 200;
-  const int n_threads = kw_values[4] != Qundef ? NUM2INT(kw_values[4]) : 1;
-  const int n_batch = kw_values[5] != Qundef ? NUM2INT(kw_values[5]) : 8;
+  const int n_batch = kw_values[4] != Qundef ? NUM2INT(kw_values[4]) : 8;
 
   gpt_params* params = RbGPTParams::get_gpt_params(rb_iv_get(self, "@params"));
   gpt_neox_model* model = RbGPTNeoXModel::get_gpt_neox_model(rb_iv_get(self, "@model"));
@@ -382,6 +388,7 @@ static VALUE gpt_neox_client_completions(int argc, VALUE* argv, VALUE self) {
   std::vector<gpt_vocab::id> embd_inp = gpt_tokenize(*vocab, prompt);
   const int n_predict = std::min(n_predict_, model->hparams.n_ctx - static_cast<int>(embd_inp.size()));
 
+  const int n_threads = NUM2INT(rb_iv_get(self, "@n_threads"));
   std::vector<float> logits;
   size_t mem_per_token = 0;
   gpt_neox_eval(*model, n_threads, 0, { 0, 1, 2, 3 }, logits, mem_per_token);
@@ -431,6 +438,7 @@ extern "C" void Init_gpt_neox_client(void) {
   rb_define_method(rb_cGPTNeoXClient, "completions", RUBY_METHOD_FUNC(gpt_neox_client_completions), -1);
   rb_define_attr(rb_cGPTNeoXClient, "path", 1, 0);
   rb_define_attr(rb_cGPTNeoXClient, "seed", 1, 0);
+  rb_define_attr(rb_cGPTNeoXClient, "n_threads", 1, 0);
 
   RbGPTParams::define_class(rb_cGPTNeoXClient);
   RbGPTVocab::define_class(rb_cGPTNeoXClient);
