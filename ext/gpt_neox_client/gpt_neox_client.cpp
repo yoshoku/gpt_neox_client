@@ -291,27 +291,41 @@ const rb_data_type_t RbGPTParams::gpt_params_type = {
 
 static VALUE gpt_neox_client_initialize(int argc, VALUE* argv, VALUE self) {
   VALUE kw_args = Qnil;
-  ID kw_table[2] = { rb_intern("model"), rb_intern("seed") };
+  ID kw_table[2] = { rb_intern("path"), rb_intern("seed") };
   VALUE kw_values[2] = { Qundef, Qundef };
   rb_scan_args(argc, argv, ":", &kw_args);
   rb_get_kwargs(kw_args, kw_table, 1, 1, kw_values);
 
   if (!RB_TYPE_P(kw_values[0], T_STRING)) {
-    rb_raise(rb_eTypeError, "expected space, String");
+    rb_raise(rb_eArgError, "path must be a String");
     return Qnil;
   }
+  if (kw_values[1] != Qundef && !RB_NIL_P(kw_values[1]) && !RB_INTEGER_TYPE_P(kw_values[1])) {
+    rb_raise(rb_eArgError, "seed must be an integer");
+    return Qnil;
+  }
+  if (RB_INTEGER_TYPE_P(kw_values[1]) && NUM2INT(kw_values[1]) < 0) {
+    rb_raise(rb_eArgError, "seed must be a positive integer");
+    return Qnil;
+  }
+
+  std::string path(StringValueCStr(kw_values[0]));
+  std::random_device rnd;
+  const unsigned int seed = RB_INTEGER_TYPE_P(kw_values[1]) ? NUM2INT(kw_values[1]) : rnd();
+
+  rb_iv_set(self, "@path", kw_values[0]);
+  rb_iv_set(self, "@seed", UINT2NUM(seed));
 
   rb_iv_set(self, "@params", rb_funcall(rb_const_get(rb_cGPTNeoXClient, rb_intern("Params")), rb_intern("new"), 0));
   rb_iv_set(self, "@vocab", rb_funcall(rb_const_get(rb_cGPTNeoXClient, rb_intern("Vocab")), rb_intern("new"), 0));
   rb_iv_set(self, "@model", rb_funcall(rb_const_get(rb_cGPTNeoXClient, rb_intern("Model")), rb_intern("new"), 0));
 
-  rb_funcall(rb_iv_get(self, "@params"), rb_intern("model="), 1, kw_values[0]);
   gpt_params* params = RbGPTParams::get_gpt_params(rb_iv_get(self, "@params"));
   gpt_neox_model* model = RbGPTNeoXModel::get_gpt_neox_model(rb_iv_get(self, "@model"));
   gpt_vocab* vocab = RbGPTVocab::get_gpt_vocab(rb_iv_get(self, "@vocab"));
 
-  if (!gpt_neox_model_load(params->model, *model, *vocab)) {
-    rb_raise(rb_eRuntimeError, "failed to load model: %s", params->model.c_str());
+  if (!gpt_neox_model_load(path, *model, *vocab)) {
+    rb_raise(rb_eRuntimeError, "failed to load model: %s", path.c_str());
     return Qnil;
   }
 
@@ -334,7 +348,8 @@ static VALUE gpt_neox_client_completions(VALUE self, VALUE prompt) {
 
   int n_past = 0;
   std::string completions = "";
-  std::mt19937 rng(params->seed);
+  const unsigned int seed = NUM2UINT(rb_iv_get(self, "@seed"));
+  std::mt19937 rng(seed);
   std::vector<gpt_vocab::id> embd;
   for (size_t i = 0; i < embd_inp.size() + params->n_predict; i++) {
     if (embd.size() > 0) {
@@ -374,6 +389,8 @@ extern "C" void Init_gpt_neox_client(void) {
   rb_cGPTNeoXClient = rb_define_class("GPTNeoXClient", rb_cObject);
   rb_define_method(rb_cGPTNeoXClient, "initialize", RUBY_METHOD_FUNC(gpt_neox_client_initialize), -1);
   rb_define_method(rb_cGPTNeoXClient, "completions", RUBY_METHOD_FUNC(gpt_neox_client_completions), 1);
+  rb_define_attr(rb_cGPTNeoXClient, "path", 1, 0);
+  rb_define_attr(rb_cGPTNeoXClient, "seed", 1, 0);
 
   RbGPTParams::define_class(rb_cGPTNeoXClient);
   RbGPTVocab::define_class(rb_cGPTNeoXClient);
