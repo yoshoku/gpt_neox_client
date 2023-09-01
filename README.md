@@ -1,5 +1,9 @@
 # GPTNeoXClient
 
+[![Gem Version](https://badge.fury.io/rb/gpt_neox_client.svg)](https://badge.fury.io/rb/gpt_neox_client)
+[![License](https://img.shields.io/badge/License-MIT-yellowgreen.svg)](https://github.com/yoshoku/gpt_neox_client/blob/main/LICENSE.txt)
+[![Documentation](https://img.shields.io/badge/api-reference-blue.svg)](https://yoshoku.github.io/gpt_neox_client/doc/)
+
 GPTNeoXClient is a Ruby client for GPT-NeoX.
 
 ## Installation
