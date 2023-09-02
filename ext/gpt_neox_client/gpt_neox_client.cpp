@@ -208,6 +208,7 @@ static VALUE gpt_neox_client_completions(int argc, VALUE* argv, VALUE self) {
   std::mt19937 rng(seed);
   std::vector<gpt_vocab::id> embd;
   std::vector<int32_t> last_n_tokens(model->hparams.n_ctx, 0);
+  gpt_vocab::id token_eos = vocab->token_to_id["</s>"];
 
   while (n_sampled < n_predict) {
     if (embd.size() > 0) {
@@ -240,7 +241,7 @@ static VALUE gpt_neox_client_completions(int argc, VALUE* argv, VALUE self) {
     }
 
     for (auto id : embd) completions += vocab->id_to_token[id];
-    if (embd.back() == 0) break;
+    if (!embd.empty() && embd.back() == token_eos) break;
   }
 
   RB_GC_GUARD(prompt_);
