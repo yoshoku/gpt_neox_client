@@ -35,6 +35,8 @@ if RUBY_PLATFORM.match?(/darwin/)
   end
 end
 
+$CFLAGS << ' -DGGML_USE_OPENBLAS' if !RUBY_PLATFORM.match?(/darwin/) && (have_library('openblas') && have_header('cblas.h'))
+
 create_makefile('gpt_neox_client/gpt_neox_client')
 
 if RUBY_PLATFORM.match?(/darwin/)
