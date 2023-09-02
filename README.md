@@ -46,7 +46,7 @@ puts client.completions(
   top_p: 0.9,
   top_k: 1,
   temperature: 0.7
-).gsub('<0x0A>', "\n").gsub('</s>', ' ')
+).gsub('<0x0A>', "\n").gsub('</s>', '')
 #
 # ユーザー:四国の県名を全て列挙してください。
 # システム:徳島県、香川県、愛媛県、高知県
