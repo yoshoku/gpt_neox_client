@@ -249,6 +249,66 @@ static VALUE gpt_neox_client_completions(int argc, VALUE* argv, VALUE self) {
   return rb_utf8_str_new_cstr(completions.c_str());
 }
 
+static VALUE gpt_neox_client_embeddings(int argc, VALUE* argv, VALUE self) {
+  VALUE prompt_ = Qnil;
+  VALUE kw_args = Qnil;
+  rb_scan_args(argc, argv, "1:", &prompt_, &kw_args);
+
+  ID kw_table[2] = { rb_intern("n_batch"), rb_intern("normalize") };
+  VALUE kw_values[2] = { Qundef, Qundef };
+  rb_get_kwargs(kw_args, kw_table, 0, 2, kw_values);
+
+  if (kw_values[0] != Qundef && !RB_INTEGER_TYPE_P(kw_values[0])) {
+    rb_raise(rb_eArgError, "n_batch must be an integer");
+    return Qnil;
+  }
+
+  std::string prompt(StringValueCStr(prompt_));
+  const int n_batch = kw_values[0] != Qundef ? NUM2INT(kw_values[0]) : 8;
+  const bool normalize = kw_values[1] != Qundef ? RTEST(kw_values[1]) : false;
+
+  gpt_neox_model* model = RbGPTNeoXModel::get_gpt_neox_model(rb_iv_get(self, "@model"));
+  gpt_vocab* vocab = RbGPTVocab::get_gpt_vocab(rb_iv_get(self, "@vocab"));
+  const int n_threads = NUM2INT(rb_iv_get(self, "@n_threads"));
+
+  std::vector<gpt_vocab::id> embd_inp = gpt_tokenize(*vocab, prompt);
+
+  if (embd_inp.size() > model->hparams.n_ctx) {
+    rb_raise(rb_eArgError, "prompt is too long");
+    return Qnil;
+  }
+
+  std::vector<float> embedding;
+  std::vector<float> logits;
+  size_t mem_per_token = 0;
+  gpt_neox_eval(*model, n_threads, 0, { 0, 1, 2, 3 }, embedding, logits, mem_per_token);
+
+  int n_past = 0;
+  std::vector<gpt_vocab::id> embd;
+  while (!embd_inp.empty()) {
+    const int n_tokens = std::min(n_batch, static_cast<int>(embd_inp.size()));
+    embd.insert(embd.end(), embd_inp.begin(), embd_inp.begin() + n_tokens);
+    if (!gpt_neox_eval(*model, n_threads, n_past, embd, embedding, logits, mem_per_token)) {
+      rb_raise(rb_eRuntimeError, "failed to predict.");
+      return Qnil;
+    }
+    n_past += n_tokens;
+    embd.clear();
+    embd_inp.erase(embd_inp.begin(), embd_inp.begin() + n_tokens);
+  }
+
+  if (normalize) {
+    const float norm = std::sqrt(std::inner_product(embedding.begin(), embedding.end(), embedding.begin(), 0.0f));
+    for (auto& v : embedding) v /= norm;
+  }
+
+  VALUE res = rb_ary_new2(embedding.size());
+  for (size_t i = 0; i < embedding.size(); i++) rb_ary_store(res, i, DBL2NUM(embedding[i]));
+
+  RB_GC_GUARD(prompt_);
+  return res;
+}
+
 extern "C" void Init_gpt_neox_client(void) {
   /**
    * Document-class: GPTNeoXClient
@@ -291,6 +351,22 @@ extern "C" void Init_gpt_neox_client(void) {
    * @return [String]
    */
   rb_define_method(rb_cGPTNeoXClient, "completions", RUBY_METHOD_FUNC(gpt_neox_client_completions), -1);
+  /**
+   * Generates embeddings.
+   *
+   * @example
+   *   require "gpt_neox_client"
+   *
+   *   client = GPTNeoXClient.new("gpt-neox-f16.bin")
+   *   client.embeddings("Hello, my name is")
+   *
+   * @overload embeddings(text, n_batch: 8, normalize: false)
+   *   @param [String] text The text.
+   *   @param [Integer] n_batch The number of tokens to evalauate at once.
+   *   @param [Boolean] normalize The flag to normalize the embeddings.
+   * @return [Array<Float>]
+   */
+  rb_define_method(rb_cGPTNeoXClient, "embeddings", RUBY_METHOD_FUNC(gpt_neox_client_embeddings), -1);
   /**
    * Returns the path to the model.
    * @return [String]
