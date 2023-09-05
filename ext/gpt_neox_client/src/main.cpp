@@ -433,6 +433,7 @@ bool gpt_neox_eval(
         const int n_threads,
         const int n_past,
         const std::vector<gpt_vocab::id> & embd_inp,
+              std::vector<float>         & embd_d,
               std::vector<float>         & embd_w,
               size_t                     & mem_per_token) {
     const int N = embd_inp.size();
@@ -656,6 +657,10 @@ bool gpt_neox_eval(
 
     //embd_w.resize(n_vocab*N);
     //memcpy(embd_w.data(), ggml_get_data(inpL), sizeof(float)*n_vocab*N);
+
+    embd_d.resize(n_embd);
+    struct ggml_tensor* embeddings = gf.nodes[gf.n_nodes - 2];
+    memcpy(embd_d.data(), (float*)ggml_get_data(embeddings) + (n_embd * (N - 1)), sizeof(float)*n_embd);
 
     // return result for just the last token
     embd_w.resize(n_vocab);

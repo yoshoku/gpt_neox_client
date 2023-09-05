@@ -196,9 +196,10 @@ static VALUE gpt_neox_client_completions(int argc, VALUE* argv, VALUE self) {
   const int n_predict = std::min(n_predict_, model->hparams.n_ctx - static_cast<int>(embd_inp.size()));
 
   const int n_threads = NUM2INT(rb_iv_get(self, "@n_threads"));
+  std::vector<float> embedding;
   std::vector<float> logits;
   size_t mem_per_token = 0;
-  gpt_neox_eval(*model, n_threads, 0, { 0, 1, 2, 3 }, logits, mem_per_token);
+  gpt_neox_eval(*model, n_threads, 0, { 0, 1, 2, 3 }, embedding, logits, mem_per_token);
 
   int n_past = 0;
   int n_consumed = 0;
@@ -212,7 +213,7 @@ static VALUE gpt_neox_client_completions(int argc, VALUE* argv, VALUE self) {
 
   while (n_sampled < n_predict) {
     if (embd.size() > 0) {
-      if (!gpt_neox_eval(*model, n_threads, n_past, embd, logits, mem_per_token)) {
+      if (!gpt_neox_eval(*model, n_threads, n_past, embd, embedding, logits, mem_per_token)) {
         rb_raise(rb_eRuntimeError, "failed to predict.");
         return Qnil;
       }
