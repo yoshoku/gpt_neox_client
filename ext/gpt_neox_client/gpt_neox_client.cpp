@@ -321,7 +321,7 @@ extern "C" void Init_gpt_neox_client(void) {
    * @example
    *   require "gpt_neox_client"
    *
-   *   client = GPTNeoXClient.new("gpt-neox-f16.bin")
+   *   client = GPTNeoXClient.new(path: "/path/to/ggml-model-f16.bin", seed: 123456789, n_threads: 4)
    *
    * @overload initialize(path, seed: nil, n_threads: 1)
    *   @param [String] path The path to the model.
@@ -336,7 +336,7 @@ extern "C" void Init_gpt_neox_client(void) {
    * @example
    *   require "gpt_neox_client"
    *
-   *   client = GPTNeoXClient.new("gpt-neox-f16.bin")
+   *   client = GPTNeoXClient.new(path: "/path/to/ggml-model-f16.bin", seed: 123456789, n_threads: 4)
    *   client.completions("Hello, my name is")
    *
    * @overload completions(prompt, top_k: 40, top_p: 0.9, temperature: 0.9, n_predict: 200, n_batch: 8, repeat_last_n: 64, repeat_penalty: 1.0)
@@ -357,8 +357,8 @@ extern "C" void Init_gpt_neox_client(void) {
    * @example
    *   require "gpt_neox_client"
    *
-   *   client = GPTNeoXClient.new("gpt-neox-f16.bin")
-   *   client.embeddings("Hello, my name is")
+   *   client = GPTNeoXClient.new(path: "/path/to/ggml-model-f16.bin", seed: 123456789, n_threads: 4)
+   *   client.embeddings("Hello, world.")
    *
    * @overload embeddings(text, n_batch: 8, normalize: false)
    *   @param [String] text The text.
