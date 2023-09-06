@@ -6,7 +6,7 @@
   ```ruby
   require 'gpt_neox_client'
 
-  client = GPTNeoXClient.new(path: '/path/to/ggml-model-f16.bin', , seed: 123456789, n_threads: 8)
+  client = GPTNeoXClient.new(path: '/path/to/ggml-model-f16.bin', seed: 123456789, n_threads: 8)
   embd = client.embeddings('Hello, world.', normalize: true)
   ```
 
